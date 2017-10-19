@@ -7,10 +7,21 @@ defmodule Benchee.Formatters.ConsoleTest do
   alias Benchee.Formatters.Console
   alias Benchee.{Suite, Statistics, Benchmark.Scenario}
 
-  @console_config %{comparison: true, unit_scaling: :best}
-  @config %Benchee.Configuration{
-    formatter_options: %{console: %{comparison: true}}
+  @extended_options [:minimum, :maximum, :sample_size]
+  @console_config %{
+    comparison: true,
+    unit_scaling: :best,
+    extended_options: @extended_options
   }
+  @config %Benchee.Configuration{
+    formatter_options: %{
+      console: %{
+        comparison: true,
+        extended_options: @extended_options
+      }
+    }
+  }
+
   describe ".output" do
     test "formats and prints the results right to the console" do
       scenarios = [
@@ -90,12 +101,24 @@ defmodule Benchee.Formatters.ConsoleTest do
         },
       ]
 
-      [_header, result_1, result_2, result_3 | _dont_care] =
+      [_header, result_1, result_2, result_3, result_4 | dont_care] =
         Console.format_scenarios(scenarios, @console_config)
 
       assert Regex.match?(~r/First/,  result_1)
       assert Regex.match?(~r/Second/, result_2)
       assert Regex.match?(~r/Third/,  result_3)
+
+      # TODO(lnw) will probably care about this
+      IO.inspect(result_1)
+      IO.puts("==============")
+      IO.inspect(result_2)
+      IO.puts("==============")
+      IO.inspect(result_3)
+      IO.puts("==============")
+      IO.inspect(result_4)
+      IO.puts("==============")
+      IO.inspect(dont_care)
+      IO.puts("==============")
     end
 
     test "adjusts the label width to longest name" do
@@ -315,6 +338,47 @@ defmodule Benchee.Formatters.ConsoleTest do
       assert result =~ "13000"
       assert result =~ "140 ms"
       assert result =~ "200.00 ms"
+    end
+  end
+
+  describe ".extended_options" do
+    test "works" do
+      scenarios = [
+        %Scenario{
+          job_name: "Job",
+          input_name: "My Arg",
+          input: "My Arg",
+          run_time_statistics: %Statistics{
+            average: 200.0,
+            ips: 5_000.0,
+            std_dev_ratio: 0.1,
+            median: 195.5,
+            percentiles: %{99 => 400.1},
+            minimum: 123.01,
+            maximum: 555.98,
+            sample_size: 100
+          }
+        },
+        %Scenario{
+          job_name: "Job",
+          input_name: "Other Arg",
+          input: "Other Arg",
+          run_time_statistics: %Statistics{
+            average: 400.0,
+            ips: 2_500.0,
+            std_dev_ratio: 0.15,
+            median: 395.0,
+            percentiles: %{99 => 500.1},
+            minimum: 333.01,
+            maximum: 111.98,
+            sample_size: 100
+          }
+        }
+      ]
+
+      output = Console.extended_options(scenarios, @config.formatter_options.console, 10)
+      output
+      |> IO.write
     end
   end
 

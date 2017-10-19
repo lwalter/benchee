@@ -19,6 +19,57 @@ defmodule Benchee.Formatters.Console do
   @deviation_width 11
   @median_width 15
   @percentile_width 15
+  @minimum_width 15
+  @maximum_width 15
+  @sample_size_width 15
+  @descriptor_label_width %{
+    name: %{
+      width: @default_label_width,
+      label: "Name",
+      format_str_pattern: "~*s"
+    },
+    ips: %{
+      width: @ips_width,
+      label: "ips",
+      format_str_pattern: "~*s"
+    },
+    average: %{
+      width: @average_width,
+      label: "average",
+      format_str_pattern: "~*ts"
+    },
+    deviation: %{
+      width: @deviation_width,
+      label: "deviation",
+      format_str_pattern: "~*ts"
+    },
+    median: %{
+      width: @median_width,
+      label: "median",
+      format_str_pattern: "~*ts"
+    },
+    percentile: %{
+      width: @percentile_width,
+      label: "99th %",
+      format_str_pattern: "~*ts"
+    },
+    minimum: %{
+      width: @minimum_width,
+      label: "minimum",
+      format_str_pattern: "~*ts"
+    },
+    maximum: %{
+      width: @maximum_width,
+      label: "maximum",
+      format_str_pattern: "~*ts"
+    },
+    sample_size: %{
+      width: @sample_size_width,
+      label: "sample size",
+      format_str_pattern: "~*ts"
+    }
+  }
+  @default_options [:name, :ips, :average, :deviation, :median, :percentile]
 
   @doc """
   Formats the benchmark statistics using `Benchee.Formatters.Console.format/1`
@@ -75,6 +126,7 @@ defmodule Benchee.Formatters.Console do
   @spec format(Suite.t) :: [any]
   def format(%Suite{scenarios: scenarios, configuration: config}) do
     config = console_configuration(config)
+
     scenarios
     |> Enum.group_by(fn(scenario) -> scenario.input_name end)
     |> Enum.map(fn({input, scenarios}) ->
@@ -145,17 +197,84 @@ defmodule Benchee.Formatters.Console do
     units = Conversion.units(sorted_scenarios, scaling_strategy)
     label_width = label_width(sorted_scenarios)
 
-    [column_descriptors(label_width) |
+    descriptors = column_descriptors(@default_options, %{name: -label_width})
+    formatted_scenarios = [descriptors |
       scenario_reports(sorted_scenarios, units, label_width)
-      ++ comparison_report(sorted_scenarios, units, label_width, config)]
+        ++ comparison_report(sorted_scenarios, units, label_width, config)]
+
+    if Enum.count(config.extended_options) > 0 do
+      formatted_scenarios ++ extended_options(scenarios, config, label_width)
+    else
+      formatted_scenarios
+    end
   end
 
-  defp column_descriptors(label_width) do
-    "\n~*s~*s~*s~*s~*s~*s\n"
-    |> :io_lib.format([-label_width, "Name", @ips_width, "ips",
-                       @average_width, "average",
-                       @deviation_width, "deviation", @median_width, "median",
-                       @percentile_width, "99th %"])
+  @spec extended_options([Scenario.t], map, number) :: [any, ...]
+  def extended_options(scenarios, console_config, label_width) do
+    descriptors = column_descriptors(
+      [:name | console_config.extended_options],
+      %{name: -label_width}
+    )
+    [descriptors] ++ [extended_report(scenarios, label_width)]
+  end
+
+  def column_descriptors(options, label_width_overrides) do
+    format_str = build_column_descriptor_format_str(options)
+    format_array = build_label_format_array(options, label_width_overrides)
+
+    format_str
+    |> :io_lib.format(format_array)
+    |> to_string
+  end
+
+  def build_column_descriptor_format_str(labels) do
+    # TODO(lnw) label isnt used, there is probably a better way to accomplish this
+    "\n" <> Enum.map_join(labels, fn(label) -> "~*s" end) <> "\n"
+  end
+
+  def build_label_format_array(labels, width_overrides) do
+    labels
+    |> Enum.map(fn(label) ->
+      label_width = @descriptor_label_width[label]
+
+      # TODO(lnw) use with here?
+      if label_width do
+        if width = width_overrides[label] do
+          [width, label_width.label]
+        else
+          [label_width.width, label_width.label]
+        end
+      else
+        # TODO(lnw) should this occur earlier?
+        raise "Extended option: #{label} not supported"
+      end
+    end)
+    |> Enum.concat
+  end
+
+  # TODO(lnw) these methods are essentially the same
+  def extended_report(scenarios, label_width) do
+    Enum.map(scenarios, fn(scenario) ->
+      format_extended_scenario(scenario, label_width)
+    end)
+  end
+
+  # TODO(lnw) this needs to be dynamic as well
+  def format_extended_scenario(%Scenario{
+                                  job_name: name,
+                                  run_time_statistics: %Statistics{
+                                    minimum: minimum,
+                                    maximum: maximum,
+                                    sample_size: sample_size
+                                  }
+                                },
+                                label_width) do
+
+    "~*s~*ts~*ts~*ts\n"
+    |> :io_lib.format([-label_width, name,
+                        @minimum_width, to_string(minimum), # TODO(lnw) what unit are these in? should they be formatted?
+                        @maximum_width, to_string(maximum),
+                        @sample_size_width, to_string(sample_size)])
     |> to_string
   end
 
