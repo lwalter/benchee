@@ -28,7 +28,7 @@ defmodule Benchee.Configuration do
     formatter_options: %{
       console: %{
         comparison:       true,
-        extended_options: false
+        extended_options: [:minimum, :maximum, :sample_size, :mode]
       }
     },
     unit_scaling:         :best,
